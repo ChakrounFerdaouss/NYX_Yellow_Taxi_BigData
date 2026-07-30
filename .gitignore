@@ -1,0 +1,44 @@
+# --- Environnement / secrets ---
+.env
+*.env.local
+
+# --- Données volumineuses (Bronze/Silver/Gold) ---
+data/bronze/*
+data/silver/*
+data/gold/*
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+*.parquet
+*.csv
+
+# --- Logs ---
+logs/*
+!logs/.gitkeep
+*.log
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# --- Jupyter notebooks : sorties exécutées ---
+notebooks/*-checkpoint.ipynb
+
+# --- Spark ---
+metastore_db/
+spark-warehouse/
+derby.log
+
+# --- Docker ---
+*.pid
+
+# --- OS / éditeurs ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

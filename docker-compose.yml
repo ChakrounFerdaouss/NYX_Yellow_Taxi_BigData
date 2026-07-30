@@ -1,0 +1,158 @@
+networks:
+  taxi-net:
+    driver: bridge
+
+volumes:
+  namenode_data:
+  datanode_data:
+  mongodb_data:
+  grafana_data:
+  prometheus_data:
+
+services:
+
+  # ------------------------------------------------------------------
+  # HDFS
+  # ------------------------------------------------------------------
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    environment:
+      - CLUSTER_NAME=taxi-cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    ports:
+      - "9870:9870"   # Web UI
+      - "9000:9000"   # HDFS RPC
+    volumes:
+      - namenode_data:/hadoop/dfs/name
+    networks:
+      - taxi-net
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - SERVICE_PRECONDITION=namenode:9870
+    ports:
+      - "9864:9864"
+    volumes:
+      - datanode_data:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    networks:
+      - taxi-net
+
+  # ------------------------------------------------------------------
+  # Apache Spark
+  # ------------------------------------------------------------------
+  spark-master:
+    image: bitnamilegacy/spark:3.5
+    container_name: spark-master
+    restart: always
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080"   # Spark master Web UI
+      - "7077:7077"   # Spark master RPC
+    volumes:
+      - ./spark:/opt/spark-apps
+      - ./data:/opt/spark-data
+    networks:
+      - taxi-net
+
+  spark-worker:
+    image: bitnamilegacy/spark:3.5
+    container_name: spark-worker
+    restart: always
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=4G
+      - SPARK_WORKER_CORES=2
+    depends_on:
+      - spark-master
+    volumes:
+      - ./spark:/opt/spark-apps
+      - ./data:/opt/spark-data
+    networks:
+      - taxi-net
+
+  # ------------------------------------------------------------------
+  # MongoDB (couche Gold / KPIs)
+  # ------------------------------------------------------------------
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    restart: always
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-taxi_user}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-taxi_pass}
+      - MONGO_INITDB_DATABASE=${MONGO_DB:-taxi_gold}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./sql:/docker-entrypoint-initdb.d
+    networks:
+      - taxi-net
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo-express
+    restart: always
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=${MONGO_USER:-taxi_user}
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGO_PASSWORD:-taxi_pass}
+      - ME_CONFIG_MONGODB_SERVER=mongodb
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongodb
+    networks:
+      - taxi-net
+
+  # ------------------------------------------------------------------
+  # Monitoring
+  # ------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: always
+    ports:
+      - "9100:9100"
+    networks:
+      - taxi-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: always
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - node-exporter
+    networks:
+      - taxi-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: always
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./dashboards:/etc/grafana/provisioning/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - taxi-net
