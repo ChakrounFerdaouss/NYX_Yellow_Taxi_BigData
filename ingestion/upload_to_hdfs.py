@@ -1,15 +1,16 @@
 """
 upload_to_hdfs.py
 
-Copie les fichiers Parquet des trajets taxi (NYC Yellow Taxi) depuis le
-stockage local (data/bronze/) vers la couche Bronze sur HDFS.
+Copie l'ensemble des fichiers bruts de la couche Bronze (taxi, météo,
+actualités RSS) depuis le stockage local vers HDFS. Généralisé pour
+gérer plusieurs sources en une seule exécution.
 
 Prérequis :
     - Le cluster HDFS (namenode + datanode) doit être démarré :
         docker compose up -d namenode datanode
-    - Les fichiers .parquet doivent être placés dans ./data/bronze/ à la
-      racine du projet (ce dossier est monté dans les conteneurs Spark
-      via ./data:/opt/spark-data).
+    - Les fichiers sources doivent avoir été téléchargés/générés au
+      préalable dans data/bronze/<source>/ (via download_taxi.py,
+      weather_api.py, rss_fetch.py).
 
 Usage :
     python ingestion/upload_to_hdfs.py
@@ -17,67 +18,94 @@ Usage :
 
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-# --- Configuration ----------------------------------------------------
-
-LOCAL_BRONZE_DIR = Path(__file__).resolve().parent.parent / "data" / "bronze" / "taxi"
-HDFS_BRONZE_DIR = "/data/bronze/taxi"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 NAMENODE_CONTAINER = "namenode"
 
 
+@dataclass
+class BronzeSource:
+    name: str
+    local_dir: Path
+    hdfs_dir: str
+    pattern: str
+
+
+# --- Sources Bronze à synchroniser vers HDFS -------------------------------
+SOURCES = [
+    BronzeSource(
+        name="taxi",
+        local_dir=PROJECT_ROOT / "data" / "bronze" / "taxi",
+        hdfs_dir="/data/bronze/taxi",
+        pattern="*.parquet",
+    ),
+    BronzeSource(
+        name="weather",
+        local_dir=PROJECT_ROOT / "data" / "bronze" / "weather",
+        hdfs_dir="/data/bronze/weather",
+        pattern="*.json",
+    ),
+    BronzeSource(
+        name="news",
+        local_dir=PROJECT_ROOT / "data" / "bronze" / "news",
+        hdfs_dir="/data/bronze/news",
+        pattern="*.xml",
+    ),
+]
+
+
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
-    """Exécute une commande et affiche ce qui est lancé."""
     print(f"$ {' '.join(cmd)}")
     return subprocess.run(cmd, check=True, **kwargs)
 
 
 def ensure_hdfs_dir(container: str, hdfs_path: str) -> None:
-    """Crée le dossier HDFS cible s'il n'existe pas déjà."""
-    run([
-        "docker", "exec", container,
-        "hdfs", "dfs", "-mkdir", "-p", hdfs_path,
-    ])
+    run(["docker", "exec", container, "hdfs", "dfs", "-mkdir", "-p", hdfs_path])
 
 
 def upload_file(container: str, local_file: Path, hdfs_dir: str) -> None:
-    """Copie un fichier local dans le conteneur namenode, puis vers HDFS."""
     tmp_path_in_container = f"/tmp/{local_file.name}"
-
-    # 1. Copier le fichier local dans le conteneur namenode
     run(["docker", "cp", str(local_file), f"{container}:{tmp_path_in_container}"])
-
-    # 2. Charger le fichier vers HDFS (écrase si déjà présent)
-    run([
-        "docker", "exec", container,
-        "hdfs", "dfs", "-put", "-f", tmp_path_in_container, hdfs_dir,
-    ])
-
-    # 3. Nettoyer le fichier temporaire dans le conteneur
+    run(["docker", "exec", container, "hdfs", "dfs", "-put", "-f", tmp_path_in_container, hdfs_dir])
     run(["docker", "exec", container, "rm", "-f", tmp_path_in_container])
 
 
+def sync_source(source: BronzeSource) -> int:
+    print(f"\n=== Source : {source.name} ===")
+
+    if not source.local_dir.exists():
+        print(f"  [Ignoré] {source.local_dir} n'existe pas encore.")
+        return 0
+
+    files = sorted(source.local_dir.glob(source.pattern))
+    if not files:
+        print(f"  [Ignoré] Aucun fichier '{source.pattern}' trouvé dans {source.local_dir}.")
+        return 0
+
+    print(f"  {len(files)} fichier(s) détecté(s).")
+    ensure_hdfs_dir(NAMENODE_CONTAINER, source.hdfs_dir)
+
+    for i, f in enumerate(files, start=1):
+        print(f"  [{i}/{len(files)}] Envoi de {f.name} ...")
+        upload_file(NAMENODE_CONTAINER, f, source.hdfs_dir)
+
+    print(f"  -> {len(files)} fichier(s) copié(s) vers {source.hdfs_dir}")
+    return len(files)
+
+
 def main() -> None:
-    if not LOCAL_BRONZE_DIR.exists():
-        print(f"[Erreur] Le dossier {LOCAL_BRONZE_DIR} n'existe pas.")
+    total_uploaded = 0
+
+    for source in SOURCES:
+        total_uploaded += sync_source(source)
+
+    print(f"\nTerminé. {total_uploaded} fichier(s) au total copié(s) vers HDFS (couche Bronze).")
+
+    if total_uploaded == 0:
+        print("[Attention] Aucun fichier n'a été trouvé pour aucune source.")
         sys.exit(1)
-
-    parquet_files = sorted(LOCAL_BRONZE_DIR.glob("*.parquet"))
-
-    if not parquet_files:
-        print(f"[Erreur] Aucun fichier .parquet trouvé dans {LOCAL_BRONZE_DIR}.")
-        sys.exit(1)
-
-    print(f"{len(parquet_files)} fichier(s) Parquet détecté(s) dans {LOCAL_BRONZE_DIR}")
-
-    ensure_hdfs_dir(NAMENODE_CONTAINER, HDFS_BRONZE_DIR)
-
-    for i, f in enumerate(parquet_files, start=1):
-        print(f"\n[{i}/{len(parquet_files)}] Envoi de {f.name} ...")
-        upload_file(NAMENODE_CONTAINER, f, HDFS_BRONZE_DIR)
-
-    print(f"\nTerminé. {len(parquet_files)} fichier(s) copié(s) vers HDFS : {HDFS_BRONZE_DIR}")
-    print(f"Vérifie avec : docker exec {NAMENODE_CONTAINER} hdfs dfs -ls {HDFS_BRONZE_DIR}")
 
 
 if __name__ == "__main__":

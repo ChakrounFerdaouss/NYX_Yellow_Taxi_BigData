@@ -95,7 +95,7 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
-      - ./sql:/docker-entrypoint-initdb.d
+      - ./mongo-init:/docker-entrypoint-initdb.d
     networks:
       - taxi-net
 
@@ -152,6 +152,7 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./dashboards:/etc/grafana/provisioning/dashboards
+      - ./provisioning/datasources:/etc/grafana/provisioning/datasources
     depends_on:
       - prometheus
     networks:
