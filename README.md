@@ -131,7 +131,7 @@ docker exec namenode hdfs dfs -ls /data/bronze/taxi
 ### 3. Nettoyage — couche Silver
 
 ```bash
-docker exec spark-master spark-submit --master spark://spark-master:7077 /opt/spark-apps/silver_job.py
+docker exec -u root -e HOME=/tmp -e HADOOP_USER_NAME=root spark-master spark-submit --master spark://spark-master:7077 --conf spark.jars.ivy=/tmp/.ivy2 /opt/spark-apps/silver_job.py
 ```
 
 Vérification :
@@ -165,8 +165,14 @@ Agrégations stockées dans MongoDB : prix moyen, nombre de courses, distance mo
 
 Dashboards Grafana : CPU, mémoire, disque, I/O, temps de traitement, lignes traitées, débit d'ingestion, lectures/écritures HDFS.
 
+## État d'avancement
 
-## Notes techniques
+- Infrastructure Docker (Spark, HDFS, MongoDB, Prometheus, Grafana)
+- Ingestion Bronze (données taxi)
+- Nettoyage Silver
+- Ingestion météo et flux non structuré
+- EDA
+- Machine Learning
+- Couche Gold (KPIs MongoDB)
+- Dashboards Grafana
 
-- Les images Spark utilisent `bitnamilegacy/spark:3.5` (Bitnami a réorganisé ses dépôts après son rachat par Broadcom ; les anciennes images `bitnami/*` ne sont plus disponibles).
-- Le schéma NYC TLC utilise `tpep_pickup_datetime` / `tpep_dropoff_datetime` ; ces colonnes sont renommées en `pickup_datetime` / `dropoff_datetime` dans la couche Silver.

@@ -32,7 +32,7 @@ MONGO_PASSWORD = os.environ.get("MONGO_PASSWORD", "taxi_pass")
 MONGO_DB = os.environ.get("MONGO_DB", "taxi_gold")
 MONGO_HOST = "mongodb:27017"
 
-MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}/{MONGO_DB}.authSource=admin"
+MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}/{MONGO_DB}?authSource=admin"
 
 
 def build_spark_session() -> SparkSession:

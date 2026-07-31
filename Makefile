@@ -67,18 +67,21 @@ upload-hdfs:
 # Traitements Spark
 # ============================================================
 silver:
-	docker exec spark-master spark-submit \
+	docker exec -u root -e HOME=/tmp -e HADOOP_USER_NAME=root spark-master spark-submit \
+		--conf spark.jars.ivy=/tmp/.ivy2 \
 		--master spark://spark-master:7077 \
 		/opt/spark-apps/silver_job.py
 
 gold:
-	docker exec spark-master spark-submit \
+	docker exec -u root -e HOME=/tmp -e HADOOP_USER_NAME=root spark-master spark-submit \
+		--conf spark.jars.ivy=/tmp/.ivy2 \
 		--master spark://spark-master:7077 \
 		--packages org.mongodb.spark:mongo-spark-connector_2.12:10.3.0 \
 		/opt/spark-apps/gold_job.py
 
 ml:
-	docker exec spark-master spark-submit \
+	docker exec -u root -e HOME=/tmp -e HADOOP_USER_NAME=root spark-master spark-submit \
+		--conf spark.jars.ivy=/tmp/.ivy2 \
 		--master spark://spark-master:7077 \
 		/opt/spark-apps/ml_training.py
 

@@ -40,7 +40,7 @@ ARCHIVE_API_URL = "https://archive-api.open-meteo.com/v1/archive"
 
 LAT = os.environ.get("WEATHER_LAT", "40.7128")
 LON = os.environ.get("WEATHER_LON", "-74.0060")
-START_DATE = os.environ.get("WEATHER_START_DATE", "2025-01-01")
+START_DATE = os.environ.get("WEATHER_START_DATE", "2024-01-01")
 END_DATE = os.environ.get("WEATHER_END_DATE", "2026-05-31")
 OUTPUT_DIR = Path(os.environ.get("WEATHER_OUTPUT_DIR", "data/bronze/weather"))
 
